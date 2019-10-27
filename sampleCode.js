@@ -538,3 +538,287 @@ class ShowImage extends Component{
         )
     }
 }
+
+
+// Hooks (React 16.8)
+
+/**
+ *
+ * ExperimentDetails
+ *
+ */
+
+import React, { useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
+import { createStructuredSelector } from 'reselect';
+import { useSelector, useDispatch } from 'react-redux';
+import moment from 'moment';
+import {
+  Row,
+  Col,
+  Input,
+  DatePicker,
+  Slider,
+  Alert,
+  Button,
+  Typography,
+  Divider,
+  Tooltip,
+} from 'antd';
+
+import { useInjectSaga } from 'utils/injectSaga';
+import { useInjectReducer } from 'utils/injectReducer';
+import Helper from 'utils/helper';
+import {
+  makeSelectExperiment,
+  makeSelectVariants,
+  makeSelectControl,
+} from './selectors';
+import Variant from '../../components/Variant/Loadable';
+import {
+  addVariant,
+  createExperiment,
+  changeDescName,
+  changeExperimentName,
+  changeExpiry,
+  changeControl,
+  setHistory,
+  resetExperiment,
+  setEditData,
+  changeStartDate,
+} from './actions';
+import reducer from './reducer';
+import saga from './saga';
+
+const { Title } = Typography;
+const key = 'experimentDetails';
+
+const stateSelector = createStructuredSelector({
+  experiment: makeSelectExperiment(),
+  variants: makeSelectVariants(),
+  control: makeSelectControl(),
+});
+
+export default function ExperimentDetails(props) {
+  const {
+    experiment,
+    variants,
+    control: { name: controlName, id, startScore, endScore },
+  } = useSelector(stateSelector);
+  const dispatch = useDispatch();
+  const [expiresAt, setExpiresAt] = useState(moment().valueOf());
+  const [startDate, setStartDate] = useState(moment().valueOf());
+
+  const { location } = props;
+  const isEdit = location.state && location.state.isEdit;
+
+  /* eslint-enable no-unused-vars */
+  useInjectReducer({ key, reducer });
+  useInjectSaga({ key, saga });
+  /* eslint-disable   no-unused-vars */
+
+  const onExperimentChange = e => {
+    const { name, value } = e.target;
+
+    // eslint-disable-next-line default-case
+    switch (name) {
+      case 'controlName':
+        dispatch(changeControl({ name: value }));
+        break;
+      case 'experimentName':
+        dispatch(changeExperimentName(value));
+        break;
+      case 'description':
+        dispatch(changeDescName(value));
+        break;
+    }
+  };
+
+  const renderVariants = () =>
+    variants.map(variant => (
+      <Variant key={variant.id} variant={variant} isEdit={experiment.isEdit} />
+    ));
+
+  const addVariants = () => {
+    dispatch(addVariant());
+  };
+
+  function onExpiresAtChange(value) {
+    if (value) {
+      const val = value.unix();
+      setExpiresAt(val * 1000);
+      dispatch(changeExpiry(val));
+    }
+  }
+
+  function onStartDateChange(value) {
+    if (value) {
+      const val = value.unix();
+      setStartDate(val * 1000);
+      dispatch(changeStartDate(val));
+    }
+  }
+
+  const addExperiment = () => {
+    const status = Helper.validateExperiment(experiment);
+    if (status) {
+      dispatch(createExperiment());
+    }
+  };
+
+  useEffect(() => () => dispatch(resetExperiment()), []);
+
+  useEffect(() => {
+    if (location.state) {
+      const { startDate: start, expiresAt: end } = location.state.experiment;
+      dispatch(setEditData(location.state));
+      setStartDate(start * 1000);
+      setExpiresAt(end * 1000);
+    }
+    dispatch(setHistory(props.history));
+  }, []);
+
+  // eslint-disable-next-line consistent-return
+  const renderMsg = () => {
+    if (!variants.length) {
+      return `No Variants created for this experiment. Please create one.`;
+    }
+  };
+
+  const onControlChange = ([start, end]) => {
+    const payload = {
+      startScore: start,
+      endScore: end,
+      value: end - start + 1,
+    };
+    dispatch(changeControl(payload));
+  };
+
+  const disabledDate = current => moment().add(-1, 'days') >= current;
+
+  return (
+    <div className="container-details">
+      <Row gutter={32}>
+        <Col span={12}>
+          <span className="exp-label">Experiment Name</span>
+          <Input
+            placeholder="Experiment Name"
+            value={experiment.name}
+            name="experimentName"
+            onChange={onExperimentChange}
+          />
+        </Col>
+        <Col span={6}>
+          <span className="exp-label">Start Date</span>
+          <DatePicker
+            showTime
+            placeholder="Starts At"
+            value={moment(
+              moment.unix(startDate / 1000),
+              'MMMM Do YYYY, h:mm:ss a',
+            )}
+            onOk={onStartDateChange}
+            onChange={onStartDateChange}
+            disabledDate={disabledDate}
+          />
+        </Col>
+        <Col span={6}>
+          <span className="exp-label">End Date</span>
+          <DatePicker
+            showTime
+            placeholder="Expires At"
+            value={moment(
+              moment.unix(expiresAt / 1000),
+              'MMMM Do YYYY, h:mm:ss a',
+            )}
+            onOk={onExpiresAtChange}
+            onChange={onExpiresAtChange}
+            disabledDate={disabledDate}
+          />
+        </Col>
+      </Row>
+      <Row gutter={32} className="desc-row">
+        <Col span={18}>
+          <span className="exp-label">Description</span>
+          <Input
+            placeholder="Experiment description"
+            name="description"
+            value={experiment.description}
+            onChange={onExperimentChange}
+          />
+        </Col>
+        <Col span={6}>
+          <Tooltip title={experiment.id}>
+            <span className="show-id">Show Experiment ID</span>
+          </Tooltip>
+        </Col>
+      </Row>
+      <Divider />
+      <Title level={3}>Control</Title>
+      <Row gutter={32}>
+        <Col span={4}>
+          <Input
+            placeholder="Control Name"
+            value={controlName}
+            name="controlName"
+            disabled
+            onChange={onExperimentChange}
+          />
+        </Col>
+        <Col span={16}>
+          <Slider
+            range
+            defaultValue={[1, 100]}
+            value={[startScore, endScore]}
+            onChange={onControlChange}
+            tooltipVisible
+            min={1}
+          />
+        </Col>
+        <Col span={4}>
+          <Tooltip title={id}>
+            <span>Show ID</span>
+          </Tooltip>
+        </Col>
+      </Row>
+      <Divider />
+      <Row gutter={32} className="custom-row">
+        <Col span={18}>
+          <Title level={3}>Variants</Title>
+        </Col>
+        <Col span={6}>
+          <Button type="primary" onClick={addVariants}>
+            + Add Variant
+          </Button>
+        </Col>
+      </Row>
+      <Row gutter={32}>
+        <Col>
+          {variants.length ? (
+            renderVariants()
+          ) : (
+            <Alert message={renderMsg()} type="info" showIcon />
+          )}
+        </Col>
+      </Row>
+      <Divider />
+      <Row gutter={32}>
+        <Col span={24}>
+          <Button
+            type="primary"
+            onClick={addExperiment}
+            disabled={!variants.length}
+            className="btn-add-exp"
+          >
+            {isEdit ? 'Update Experiment' : 'Add Experiment'}
+          </Button>
+        </Col>
+      </Row>
+    </div>
+  );
+}
+
+ExperimentDetails.propTypes = {
+  location: PropTypes.object,
+  history: PropTypes.object,
+};
